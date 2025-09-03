@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Impresión ESC/POS vía Web Bluetooth (BLE)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; margin: 0; padding: 2rem; display: grid; place-items: center; min-height: 100dvh; }
+    .card { width: min(720px, 92vw); padding: 1.5rem; border-radius: 1rem; box-shadow: 0 10px 30px rgba(0,0,0,.08); border: 1px solid rgba(0,0,0,.08); }
+    h1 { margin: 0 0 .5rem 0; font-size: clamp(1.2rem, 3.5vw, 1.8rem); }
+    .muted { opacity: .7; margin-top: .25rem; }
+    button { font-size: 1rem; padding: .9rem 1.1rem; border-radius: .8rem; border: none; cursor: pointer; display: inline-flex; gap: .6rem; align-items: center; }
+    button.primary { background: #0d6efd; color: white; }
+    button.secondary { background: #eee; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row { display: flex; gap: .75rem; flex-wrap: wrap; }
+    .log { margin-top: 1rem; padding: .75rem; border-radius: .75rem; background: rgba(0,0,0,.04); max-height: 40vh; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9rem; }
+    .ok { color: #0a7d2b; }
+    .warn { color: #a35a00; }
+    .err { color: #b00020; }
+    code.kbd { background: rgba(0,0,0,.06); padding: .15rem .35rem; border-radius: .4rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Imprimir "Hola Mundo" (ESC/POS) vía Web Bluetooth</h1>
+    <p class="muted">Demo orientada a impresoras térmicas que exponen <strong>BLE GATT</strong> con un characteristic de escritura. Los navegadores <em>no</em> acceden a Bluetooth clásico (SPP/RFCOMM) desde la web. Si tu impresora sólo es "clásica", esta demo no funcionará.</p>
+
+    <div class="row" style="margin:1rem 0;">
+      <button id="btnConnect" class="primary">🔗 Conectar impresora</button>
+      <button id="btnPrint" class="secondary" disabled>🖨️ Imprimir "Hola Mundo"</button>
+      <button id="btnPrintBigCenter" class="secondary" disabled>🖨️ Texto Grande Centrado</button>
+      <button id="btnCut" class="secondary" disabled>✂️ Corte</button>
+      <button id="btnDisconnect" class="secondary" disabled>⏏️ Desconectar</button>
+    </div>
+
+    <details>
+      <summary>Opciones avanzadas</summary>
+      <label>Nombre esperado: <input id="expectedName" type="text" value="BlueTooth Printer" style="margin:.5rem 0; width: 100%;"/></label>
+      <label>MAC objetivo (solo informativo): <input id="expectedMac" type="text" value="66:22:BC:B2:DA:9B" style="margin:.5rem 0; width: 100%;"/></label>
+    </details>
+
+    <div id="log" class="log" role="log" aria-live="polite"></div>
+    <img id="logo" alt="Foto del perfil de laludineta" src="logo.jpg">
+  </div>
+
+<script src='dist/receipt-printer-encoder.umd.js'></script>
+
+<script>
+(() => {
+  const logEl = document.getElementById('log');
+  const $ = sel => document.querySelector(sel);
+  const btnConnect = $('#btnConnect');
+  const btnPrint = $('#btnPrint');
+  const btnPrintBigCenter = $('#btnPrintBigCenter');
+  const btnCut = $('#btnCut');
+  const btnDisconnect = $('#btnDisconnect');
+
+  let device = null;
+  let server = null;
+  let writeCharacteristic = null;
+
+  const KNOWN_SERVICES = [
+    '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+    0xffe0,
+    0xffe5,
+    0x18f0,
+  ];
+
+  function log(msg, cls='') {
+    const p = document.createElement('div');
+    p.textContent = msg;
+    if (cls) p.classList.add(cls);
+    logEl.appendChild(p);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function supportsWebBluetooth() {
+    return !!navigator.bluetooth;
+  }
+
+  function encoder(text) {
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0x7F;
+    return bytes;
+  }
+
+  function concat(...chunks) {
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  }
+
+  async function writeEscPos(data) {
+    if (!writeCharacteristic) throw new Error('No hay characteristic de escritura');
+    const CHUNK = 180;
+    for (let i = 0; i < data.length; i += CHUNK) {
+      const slice = data.slice(i, i + CHUNK);
+      try {
+        if (writeCharacteristic.properties && writeCharacteristic.properties.writeWithoutResponse) {
+          await writeCharacteristic.writeValueWithoutResponse(slice);
+        } else {
+          await writeCharacteristic.writeValue(slice);
+        }
+      } catch (e) {
+        await new Promise(r => setTimeout(r, 30));
+        if (writeCharacteristic.writeValue) await writeCharacteristic.writeValue(slice);
+      }
+      await new Promise(r => setTimeout(r, 10));
+    }
+  }
+
+  async function connect() {
+    if (!supportsWebBluetooth()) {
+      log('Este navegador no soporta Web Bluetooth. Usa Chrome/Edge en Android/desktop y habilita Bluetooth.', 'err');
+      return;
+    }
+
+    const expectedName = document.getElementById('expectedName').value.trim();
+
+    try {
+      log('Mostrando selector de dispositivos…');
+      const filters = [];
+      if (expectedName) filters.push({ name: expectedName });
+
+      device = await navigator.bluetooth.requestDevice({
+        filters: filters.length ? filters : undefined,
+        acceptAllDevices: filters.length ? false : true,
+        optionalServices: KNOWN_SERVICES
+      });
+
+      log(`Seleccionado: ${device.name || '(sin nombre)'} (${device.id})`, 'ok');
+
+      device.addEventListener('gattserverdisconnected', () => {
+        log('Desconectado', 'warn');
+        btnPrint.disabled = true;
+        btnPrintBigCenter.disabled = true;
+        btnCut.disabled = true;
+        btnDisconnect.disabled = true;
+      });
+
+      server = await device.gatt.connect();
+      log('GATT conectado', 'ok');
+
+      for (const svc of KNOWN_SERVICES) {
+        try {
+          const service = await server.getPrimaryService(svc);
+          const characteristics = await service.getCharacteristics();
+          for (const ch of characteristics) {
+            if (ch.properties.write || ch.properties.writeWithoutResponse) {
+              writeCharacteristic = ch;
+              break;
+            }
+          }
+          if (writeCharacteristic) break;
+        } catch (e) { }
+      }
+
+      if (!writeCharacteristic) {
+        const services = await server.getPrimaryServices();
+        for (const service of services) {
+          const chs = await service.getCharacteristics();
+          writeCharacteristic = chs.find(c => c.properties.write || c.properties.writeWithoutResponse) || null;
+          if (writeCharacteristic) break;
+        }
+      }
+
+      if (!writeCharacteristic) {
+        throw new Error('No se encontró ningún characteristic de escritura BLE. La impresora puede ser sólo Bluetooth clásico.');
+      }
+
+      log('Canal de escritura listo ✅', 'ok');
+      btnPrint.disabled = false;
+      btnPrintBigCenter.disabled = false;
+      btnCut.disabled = false;
+      btnDisconnect.disabled = false;
+
+    } catch (err) {
+      log('Error: ' + err.message, 'err');
+      console.error(err);
+    }
+  }
+
+  async function printHola() {
+    try {
+      const ESC = 0x1B, GS = 0x1D;
+      const init = new Uint8Array([ESC, 0x40]);
+      const codepage = new Uint8Array([ESC, 0x74, 0x00]);
+      const text = encoder('Hola Mundo\n');
+      const feedCut = new Uint8Array([GS, 0x56, 0x41, 0x10]);
+      const data = concat(init, codepage, text, feedCut);
+      await writeEscPos(data);
+      log('Enviado "Hola Mundo"', 'ok');
+    } catch (e) {
+      log('Error imprimiendo: ' + e.message, 'err');
+      console.error(e);
+    }
+  }
+
+  async function printBigCenter(text = 'Texto Grande') {
+    try {
+      let encoder = new ReceiptPrinterEncoder();
+      let result = encoder
+        .line(' ')
+        .line('La Ludineta')
+        .line('Ig: @laludineta')
+        .line(' ')
+        .encode()
+      await writeEscPos(result);
+      const logo = $('#logo');
+      result = encoder
+        .image(canvas, 64, 64, 'atkinson')
+        .encode()
+      await writeEscPos(result);
+      log(`Enviado texto grande centrado: "${text}"`, 'ok');
+    } catch (e) {
+      log('Error imprimiendo texto grande centrado: ' + e.message, 'err');
+      console.error(e);
+    }
+  }
+
+  async function cut() {
+    try {
+      const GS = 0x1D;
+      const feedCut = new Uint8Array([GS, 0x56, 0x41, 0x10]);
+      await writeEscPos(feedCut);
+      log('Corte enviado', 'ok');
+    } catch (e) {
+      log('Error en corte: ' + e.message, 'err');
+    }
+  }
+
+  async function disconnect() {
+    try {
+      if (device && device.gatt.connected) {
+        device.gatt.disconnect();
+        log('Desconectado manualmente');
+      }
+    } catch (e) {
+      log('Error al desconectar: ' + e.message, 'err');
+    }
+  }
+
+  btnConnect.addEventListener('click', connect);
+  btnPrint.addEventListener('click', printHola);
+  btnPrintBigCenter.addEventListener('click', () => {
+    const texto = prompt('Introduce el texto a imprimir centrado y grande:', 'Mi Texto');
+    if (texto) printBigCenter(texto);
+  });
+  btnCut.addEventListener('click', cut);
+  btnDisconnect.addEventListener('click', disconnect);
+})();
+</script>
+</body>
+</html>

@@ -58,6 +58,14 @@
     // Others vendor services can be discovered dynamically
   ];
 
+  function concat(...chunks) {
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  }
+
   function log(msg, cls='') {
     const p = document.createElement('div');
     p.textContent = msg;
@@ -202,6 +210,28 @@
       }
     }
     return new Uint8Array(data);
+  }
+
+  async function writeEscPos(data) {
+    if (!writeCharacteristic) throw new Error('No hay characteristic de escritura');
+      // Dividir en trozos para MTU (~180 bytes típicos)
+      const CHUNK = 180;
+      for (let i = 0; i < data.length; i += CHUNK) {
+        const slice = data.slice(i, i + CHUNK);
+        try {
+          // Preferir writeWithoutResponse si está disponible
+          if (writeCharacteristic.properties && writeCharacteristic.properties.writeWithoutResponse) {
+            await writeCharacteristic.writeValueWithoutResponse(slice);
+          } else {
+            await writeCharacteristic.writeValue(slice);
+          }
+        } catch (e) {
+        // Algunos stacks requieren un pequeño delay entre escrituras
+        await new Promise(r => setTimeout(r, 30));
+        if (writeCharacteristic.writeValue) await writeCharacteristic.writeValue(slice);
+      }
+      await new Promise(r => setTimeout(r, 10));
+    }
   }
   
   async function printImage(url) {
