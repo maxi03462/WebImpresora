@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tomar foto y subir (380x250 B/N)</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 1rem; max-width: 520px; margin: auto; }
+  video, canvas, img { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+  .controls { margin-top: 0.75rem; display:flex; gap:.5rem; flex-wrap:wrap; }
+  button { padding: .6rem .9rem; border-radius: 8px; border: none; background:#0b76ff; color:white; font-weight:600; cursor:pointer; }
+  button.secondary { background:#6b7280; }
+  #status { margin-top:.75rem; color:#333; }
+  #previewWrap { margin-top:.75rem; display:flex; gap:.6rem; align-items:center; }
+  #previewLabel { font-size:.9rem; color:#444; }
+  input[type=file] { display:none; }
+</style>
+</head>
+<body>
+  <h1>Foto 380×250 B/N → POST /upload</h1>
+
+  <div id="cameraArea">
+    <video id="video" playsinline autoplay style="display:none;"></video>
+    <div class="controls">
+      <button id="startCam">Abrir cámara</button>
+      <button id="takePhoto" class="secondary" disabled>Tomar foto</button>
+      <label for="fileInput" style="display:inline-block">
+        <button type="button" id="chooseFile" class="secondary">Subir foto (fallback)</button>
+      </label>
+      <button id="stopCam" class="secondary" disabled>Detener cámara</button>
+    </div>
+    <input id="fileInput" accept="image/*" capture="environment" type="file">
+  </div>
+  <div class="row" style="margin:1rem 0;">
+    <button id="btnConnect" class="primary">🔗 Conectar impresora</button>
+    <button id="btnPrintImage" class="secondary" disabled>🖼️ Imprimir Imagen</button>
+    <button id="btnDisconnect" class="secondary" disabled>⏏️ Desconectar</button>
+  </div>
+
+  <div id="previewWrap">
+    <div>
+      <div id="previewLabel">Preview (380×250 B/N):</div>
+      <canvas id="canvas" width="380" height="250" style="display:block; margin-top:.5rem;"></canvas>
+    </div>
+    <div>
+      <div id="uploadLabel">Estado:</div>
+      <div id="status">Listo.</div>
+    </div>
+  </div>
+  <div id="log" class="log" role="log" aria-live="polite"></div>
+
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const startCamBtn = document.getElementById('startCam');
+  const takePhotoBtn = document.getElementById('takePhoto');
+  const stopCamBtn = document.getElementById('stopCam');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const status = document.getElementById('status');
+  const fileInput = document.getElementById('fileInput');
+  const chooseFileBtn = document.getElementById('chooseFile');
+
+  const logEl = document.getElementById('log');
+  const $ = sel => document.querySelector(sel);
+  const btnConnect = $('#btnConnect');
+  const btnPrintImage = $('#btnPrintImage');
+  const btnDisconnect = $('#btnDisconnect');
+
+  let device = null;
+  let server = null;
+  let writeCharacteristic = null;
+
+  let stream = null;
+
+  function setStatus(s) { status.textContent = s; }
+
+  async function startCamera() {
+    try {
+      // Prefer rear camera if available
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      video.srcObject = stream;
+      video.style.display = 'block';
+      startCamBtn.disabled = true;
+      takePhotoBtn.disabled = false;
+      stopCamBtn.disabled = false;
+      setStatus('Cámara abierta. Presiona "Tomar foto".');
+      // autoplay plays inline on mobile with playsinline attribute
+    } catch (err) {
+      console.error('No se pudo abrir la cámara:', err);
+      setStatus('No se pudo abrir la cámara. Usa "Subir foto" como fallback.');
+    }
+  }
+
+  function stopCamera() {
+    if (stream) {
+      const tracks = stream.getTracks();
+      tracks.forEach(t => t.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+    video.style.display = 'none';
+    startCamBtn.disabled = false;
+    takePhotoBtn.disabled = true;
+    stopCamBtn.disabled = true;
+    setStatus('Cámara detenida.');
+  }
+
+  function imageToGrayscaleAndResize(imgOrVideo) {
+    // dibuja el source en un canvas temporal con tamaño objetivo 380x250
+    const targetW = 380, targetH = 250;
+    // Si el source es video, se toma el frame actual; si es Image, se usa la imagen.
+    // Mantenemos relación de aspecto llenando y centrando (cover) para evitar distorsión,
+    // pero el requisito dijo "reescala a 380x250" — aquí hacemos cover crop centrado.
+    const tmp = document.createElement('canvas');
+    const tw = targetW, th = targetH;
+    tmp.width = tw;
+    tmp.height = th;
+    const tctx = tmp.getContext('2d');
+
+    // compute cover scaling
+    let sw, sh;
+    if (imgOrVideo instanceof HTMLVideoElement) {
+      sw = imgOrVideo.videoWidth;
+      sh = imgOrVideo.videoHeight;
+    } else {
+      sw = imgOrVideo.naturalWidth;
+      sh = imgOrVideo.naturalHeight;
+    }
+    if (!sw || !sh) {
+      // fallback: draw directly
+      tctx.drawImage(imgOrVideo, 0,0, tw, th);
+    } else {
+      const scale = Math.max(tw/sw, th/sh);
+      const drawW = sw * scale;
+      const drawH = sh * scale;
+      const dx = (tw - drawW) / 2;
+      const dy = (th - drawH) / 2;
+      tctx.drawImage(imgOrVideo, dx, dy, drawW, drawH);
+    }
+
+    // convert to grayscale
+    const imgData = tctx.getImageData(0,0,tw,th);
+    const d = imgData.data;
+    for (let i=0; i<d.length; i+=4) {
+      // luminosity method: 0.299 R + 0.587 G + 0.114 B
+      const lum = Math.round(0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]);
+      d[i] = d[i+1] = d[i+2] = lum;
+      // alpha remains d[i+3]
+    }
+    tctx.putImageData(imgData, 0,0);
+
+    // copy processed to visible canvas (380x250)
+    ctx.clearRect(0,0,tw,th);
+    ctx.drawImage(tmp, 0,0);
+  }
+
+  async function takePhotoAndUpload() {
+    setStatus('Procesando imagen...');
+    // If camera active, use video element; otherwise require file input
+    if (stream && video.readyState >= 2) {
+      // ensure video frame available
+      imageToGrayscaleAndResize(video);
+      await canvasToAndUpload();
+    } else {
+      setStatus('Cámara no disponible. Por favor sube una foto con "Subir foto".');
+    }
+  }
+
+  async function canvasToAndUpload() {
+    // Convert canvas to JPEG blob
+    return new Promise((resolve, reject) => {
+      // quality 0.9; puedes ajustar
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setStatus('Error al generar el JPEG.');
+          reject(new Error('no blob'));
+          return;
+        }
+      }, 'image/jpeg', 0.9);
+    });
+  }
+
+  // file input fallback: load selected image, process and upload
+  fileInput.addEventListener('change', async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    setStatus('Leyendo archivo local...');
+    const img = new Image();
+    img.onload = async () => {
+      imageToGrayscaleAndResize(img);
+      try {
+        await canvasToAndUpload();
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    img.onerror = () => {
+      setStatus('No se pudo leer la imagen.');
+    };
+    img.src = URL.createObjectURL(f);
+  });
+
+  // Buttons
+  startCamBtn.addEventListener('click', startCamera);
+  stopCamBtn.addEventListener('click', stopCamera);
+  takePhotoBtn.addEventListener('click', takePhotoAndUpload);
+  chooseFileBtn.addEventListener('click', () => fileInput.click());
+
+  // If user navigates away, stop camera
+  window.addEventListener('pagehide', stopCamera);
+
+  //************************************************************ Impresora ************************************************************//
+  const KNOWN_SERVICES = [
+    // Nordic UART Service (NUS)
+    '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+    // East-Asia BLE printers often use custom FFE0/FFE5
+    0xffe0,
+    0xffe5,
+    // Some ESC/POS BLE bridges use 0x18F0/0x2AF1
+    0x18f0,
+    // Others vendor services can be discovered dynamically
+  ];
+
+  function log(msg, cls='') {
+    const p = document.createElement('div');
+    p.textContent = msg;
+    if (cls) p.classList.add(cls);
+    logEl.appendChild(p);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function supportsWebBluetooth() {
+    return !!navigator.bluetooth;
+  }
+
+  async function connect() {
+    if (!supportsWebBluetooth()) {
+      log('Este navegador no soporta Web Bluetooth. Usa Chrome/Edge en Android/desktop y habilita Bluetooth.', 'err');
+      return;
+    }
+
+    try {
+      log('Mostrando selector de dispositivos…');
+      const filters = [];
+
+      device = await navigator.bluetooth.requestDevice({
+        filters: undefined,
+        acceptAllDevices: true,
+        optionalServices: KNOWN_SERVICES
+      });
+
+      log(`Seleccionado: ${device.name || '(sin nombre)'}`, 'ok');
+
+      device.addEventListener('gattserverdisconnected', () => {
+        log('Desconectado', 'warn');
+        btnDisconnect.disabled = true;
+        btnPrintImage.disabled = true;
+      });
+
+      server = await device.gatt.connect();
+      log('GATT conectado', 'ok');
+
+      // Intentar servicios conocidos primero
+      for (const svc of KNOWN_SERVICES) {
+        try {
+          const service = await server.getPrimaryService(svc);
+          const characteristics = await service.getCharacteristics();
+          for (const ch of characteristics) {
+            if (ch.properties.write || ch.properties.writeWithoutResponse) {
+              writeCharacteristic = ch;
+              break;
+            }
+          }
+          if (writeCharacteristic) break;
+        } catch (e) { /* ignorar y seguir */ }
+      }
+
+      // Si no se encontró, descubrir todos los servicios y elegir el primer characteristic con write
+      if (!writeCharacteristic) {
+        const services = await server.getPrimaryServices();
+        for (const service of services) {
+          const chs = await service.getCharacteristics();
+          writeCharacteristic = chs.find(c => c.properties.write || c.properties.writeWithoutResponse) || null;
+          if (writeCharacteristic) break;
+        }
+      }
+
+      if (!writeCharacteristic) {
+        throw new Error('No se encontró ningún characteristic de escritura BLE. La impresora puede ser sólo Bluetooth clásico.');
+      }
+
+      log('Canal de escritura listo ✅', 'ok');
+      btnDisconnect.disabled = false;
+      btnPrintImage.disabled = false;
+    } catch (err) {
+      log('Error: ' + err.message, 'err');
+      console.error(err);
+    }
+  }
+
+  async function disconnect() {
+    try {
+      if (device && device.gatt.connected) {
+        device.gatt.disconnect();
+        log('Desconectado manualmente');
+      }
+    } catch (e) {
+      log('Error al desconectar: ' + e.message, 'err');
+    }
+  }
+
+  function getCanvasMonochromeData() {
+    const width = canvas.width;
+    const height = canvas.height;
+    const imgData = ctx.getImageData(0, 0, width, height).data;
+
+    const mono = new Uint8Array(width * height);
+    for (let i = 0; i < width * height; i++) {
+      mono[i] = imgData[i*4] > 0 ? 1 : 0;
+    }
+    return { mono, width, height };
+  }
+
+  function escposFromCanvas() {
+    const { mono, width, height } = getCanvasMonochromeData();
+    const GS = 0x1D;
+    const bytesPerLine = Math.ceil(width / 8);
+    const data = [];
+
+    data.push(GS, 0x76, 0x30, 0x00, bytesPerLine & 0xFF, (bytesPerLine >> 8) & 0xFF, height & 0xFF, (height >> 8) & 0xFF);
+
+    for (let y = 0; y < height; y++) {
+      for (let xByte = 0; xByte < bytesPerLine; xByte++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = xByte*8 + bit;
+          if (x < width) {
+            byte |= mono[y*width + x] ? (0x80 >> bit) : 0;
+          }
+        }
+        data.push(byte);
+      }
+    }
+    return new Uint8Array(data);
+  }
+
+  function concat(...chunks) {
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  }
+
+  async function printCanvas() {
+    try {
+      const escData = escposFromCanvas();
+      const ESC = 0x1B;
+      const init = new Uint8Array([ESC, 0x40]); // Inicializar
+      const feedCut = new Uint8Array([0x1D, 0x56, 0x41, 0x10]); // Corte parcial
+      const fullData = concat(init, escData, feedCut);
+      await writeEscPos(fullData);
+      log('Imagen enviada ✅', 'ok');
+    } catch (e) {
+      log('Error imprimiendo: ' + e.message, 'err');
+      console.error(e);
+    }
+  }
+
+  async function imprimir() {
+    printCanvas();
+  }
+
+  btnConnect.addEventListener('click', connect);
+  btnDisconnect.addEventListener('click', disconnect);
+  btnPrintImage.addEventListener('click', imprimir);
+
+  log("Aplicacion iniciada");
+
+})();
+</script>
+</body>
+</html>
