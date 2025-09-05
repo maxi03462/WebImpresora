@@ -15,6 +15,7 @@ let device = null;
 let server = null;
 let service = null;
 let characteristic = null;
+let writeCharacteristic = null;
 
 const KNOWN_SERVICES = [
   "6e400001-b5a3-f393-e0a9-e50e24dcca9e",
@@ -81,17 +82,40 @@ async function connectPrinter() {
   try {
     statusEl.textContent = "Buscando impresora...";
     device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true
+      acceptAllDevices: true,
+      optionalServices: KNOWN_SERVICES
     });
 
     device.addEventListener("gattserverdisconnected", onDisconnected);
 
     server = await device.gatt.connect();
-    for (let svc of KNOWN_SERVICES) {
+    // Intentar servicios conocidos primero
+    for (const svc of KNOWN_SERVICES) {
       try {
-        service = await server.getPrimaryService(svc);
-        break;
-      } catch {}
+        const service = await server.getPrimaryService(svc);
+        const characteristics = await service.getCharacteristics();
+        for (const ch of characteristics) {
+          if (ch.properties.write || ch.properties.writeWithoutResponse) {
+            writeCharacteristic = ch;
+            break;
+          }
+        }
+        if (writeCharacteristic) break;
+      } catch (e) { /* ignorar y seguir */ }
+    }
+
+    // Si no se encontró, descubrir todos los servicios y elegir el primer characteristic con write
+    if (!writeCharacteristic) {
+      const services = await server.getPrimaryServices();
+      for (const service of services) {
+        const chs = await service.getCharacteristics();
+        writeCharacteristic = chs.find(c => c.properties.write || c.properties.writeWithoutResponse) || null;
+        if (writeCharacteristic) break;
+      }
+    }
+
+    if (!writeCharacteristic) {
+      throw new Error('No se encontró ningún characteristic de escritura BLE. La impresora puede ser sólo Bluetooth clásico.');
     }
 
     if (!service) throw new Error("Servicio no encontrado");

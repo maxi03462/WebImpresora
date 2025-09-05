@@ -10,6 +10,7 @@
   .controls { margin-top: 0.75rem; display:flex; gap:.5rem; flex-wrap:wrap; }
   button { padding: .6rem .9rem; border-radius: 8px; border: none; background:#0b76ff; color:white; font-weight:600; cursor:pointer; }
   button.secondary { background:#6b7280; }
+  button.expandir { display: block; width: 100%; box-sizing: border-box;}
   #status { margin-top:.75rem; color:#333; }
   #previewWrap { margin-top:.75rem; display:flex; gap:.6rem; align-items:center; }
   #previewLabel { font-size:.9rem; color:#444; }
@@ -22,25 +23,22 @@
   <div id="cameraArea">
     <video id="video" playsinline autoplay style="display:none;"></video>
     <div class="controls">
-      <button id="startCam">Abrir cámara</button>
-      <button id="takePhoto" class="secondary" disabled>Tomar foto</button>
-      <label for="fileInput" style="display:inline-block">
-        <button type="button" id="chooseFile" class="secondary">Subir foto (fallback)</button>
-      </label>
+      <button id="takePhoto" class="expandir" disabled>Tomar foto</button>
+    </div>
+    <div class="controls">
+      <button id="startCam" class="secondary">Abrir cámara</button>
       <button id="stopCam" class="secondary" disabled>Detener cámara</button>
     </div>
-    <input id="fileInput" accept="image/*" capture="environment" type="file">
   </div>
   <div class="row" style="margin:1rem 0;">
     <button id="btnConnect" class="primary">🔗 Conectar impresora</button>
-    <button id="btnPrintImage" class="secondary" disabled>🖼️ Imprimir Imagen</button>
     <button id="btnDisconnect" class="secondary" disabled>⏏️ Desconectar</button>
   </div>
 
   <div id="previewWrap">
     <div>
-      <div id="previewLabel">Preview (380×250 B/N):</div>
-      <canvas id="canvas" width="380" height="250" style="display:block; margin-top:.5rem;"></canvas>
+      <div id="previewLabel">Preview:</div>
+      <canvas id="canvas" width="384" height="256" style="display:block; margin-top:.5rem;"></canvas>
     </div>
     <div>
       <div id="uploadLabel">Estado:</div>
@@ -48,8 +46,14 @@
     </div>
   </div>
   <div id="log" class="log" role="log" aria-live="polite"></div>
+  <img id="logo" src="Ludineta.png" width="384" height="128" style="visibility:hidden;">
 
-<script src='dist/receipt-printer-encoder.umd.js'></script>
-<script src="camera-printer.js"></script>
+<script src="./impresora.js"></script>
+<script src="./camara.js"></script>
+<script src="./dist/receipt-printer-encoder.umd.js"></script>
+<script>
+  initImpresora();
+  initCameraUploader();
+</script>
 </body>
 </html>
