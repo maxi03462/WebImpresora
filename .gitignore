@@ -1,0 +1,17 @@
+cert.pem
+key.pem
+
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build output
+dist/
+
+# Local logs
+*.log
