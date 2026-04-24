@@ -252,6 +252,33 @@ button:disabled { opacity: 0.42; filter: grayscale(0.2); }
   filter: brightness(1.08);
 }
 
+#installAppBtn {
+  color: #fff;
+  font-size: 0.95rem;
+  background: linear-gradient(180deg, #3f5fe8, #2e46b5);
+  box-shadow: 0 8px 20px rgba(42, 66, 178, 0.45);
+}
+
+#installAppBtn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.hiddenInstall {
+  display: none !important;
+}
+
+.installStatus {
+  min-height: 1.1rem;
+  font-size: 0.8rem;
+  color: #9fb0ec;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.installStatus.visible {
+  opacity: 1;
+}
+
 #btnConnect {
   color: #071a16;
   background: linear-gradient(180deg, #7effe0, #13d6bf);
