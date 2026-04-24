@@ -25,6 +25,7 @@
     <section class="controls">
       <button id="takePhoto" disabled>Tomar Foto</button>
       <button id="toggleCamera" class="camera-toggle">📷 Cambiar Cámara</button>
+      <button id="openImageConfig" class="configButton">Configuracion de imagen</button>
       <div class="row">
         <button id="btnConnect" class="primary">Conectar Impresora</button>
         <button id="btnDisconnect" class="secondary" disabled>Desconectar</button>
@@ -42,6 +43,99 @@
     <canvas id="canvas" width="384" height="256"></canvas>
     <div id="log" class="log" role="log" aria-live="polite"></div>
   </main>
+
+  <div id="imageConfigModal" class="modalOverlay" aria-hidden="true">
+    <section class="modalCard" role="dialog" aria-modal="true" aria-labelledby="configTitle">
+      <header class="modalHeader">
+        <h2 id="configTitle">Configuracion de imagen</h2>
+      </header>
+
+      <div class="modalBody">
+        <label class="field">
+          <span>Preset</span>
+          <select id="cfgPreset">
+            <option value="custom">Personalizado</option>
+            <option value="texto">Texto</option>
+            <option value="logo">Logo</option>
+            <option value="foto">Foto</option>
+            <option value="qr">QR</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Modo de conversion</span>
+          <select id="cfgMode">
+            <option value="threshold">threshold</option>
+            <option value="adaptive">adaptive</option>
+            <option value="dithering">dithering</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Umbral: <strong id="cfgThresholdValue">127</strong></span>
+          <input id="cfgThreshold" type="range" min="0" max="255" value="127" />
+        </label>
+
+        <label id="cfgDitheringField" class="field">
+          <span>Tipo de dithering</span>
+          <select id="cfgDithering">
+            <option value="floyd-steinberg">floyd-steinberg</option>
+            <option value="atkinson">atkinson</option>
+            <option value="bayer">bayer</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Brillo: <strong id="cfgBrightnessValue">0</strong></span>
+          <input id="cfgBrightness" type="range" min="-100" max="100" value="0" />
+        </label>
+
+        <label class="field">
+          <span>Contraste: <strong id="cfgContrastValue">1.0</strong></span>
+          <input id="cfgContrast" type="range" min="0.5" max="2" step="0.1" value="1" />
+        </label>
+
+        <label class="field">
+          <span>Gamma: <strong id="cfgGammaValue">1.0</strong></span>
+          <input id="cfgGamma" type="range" min="0.5" max="3" step="0.1" value="1" />
+        </label>
+
+        <label class="field">
+          <span>Reduccion de ruido</span>
+          <select id="cfgNoiseReduction">
+            <option value="off">off</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+        </label>
+
+        <label class="field checkboxField">
+          <input id="cfgInvert" type="checkbox" />
+          <span>Invertir colores</span>
+        </label>
+
+        <label class="field">
+          <span>Escalado</span>
+          <select id="cfgResize">
+            <option value="fit_width">fit_width</option>
+            <option value="keep_size">keep_size</option>
+          </select>
+        </label>
+
+        <div class="previewBox">
+          <div class="previewTitle">Preview</div>
+          <canvas id="configPreviewCanvas" width="300" height="200"></canvas>
+        </div>
+      </div>
+
+      <footer class="modalFooter">
+        <button id="cfgCancel" class="secondaryBtn">Cancelar</button>
+        <button id="cfgClose" class="ghostBtn">Cerrar</button>
+        <button id="cfgApply" class="primaryBtn">Aplicar</button>
+      </footer>
+    </section>
+  </div>
 
   <script>
     const arcadeStateEl = document.getElementById('arcadeState');
