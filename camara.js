@@ -6,7 +6,6 @@ const stopCamBtn = document.getElementById('stopCam');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const status = document.getElementById('status');
-const logoLudineta = document.getElementById('logo');
 
 function initCameraUploader() {
   
@@ -81,46 +80,17 @@ function initCameraUploader() {
       ctx.drawImage(tmp, 0, 0);
     }
 
-    function combinarCanvasYLogo(canvas, logo) {
-      // Usar dimensiones reales del logo
-      const logoAncho = logo.naturalWidth;
-      const logoAlto = logo.naturalHeight;
-    
-      // Altura total = alto del logo + alto del canvas
-      const nuevoAlto = logoAlto + canvas.height;
-      const nuevoAncho = Math.max(logoAncho, canvas.width);
-    
-      // Crear/usar un nuevo canvas
-      const nuevoCanvas = document.createElement("canvas");
-      nuevoCanvas.width = nuevoAncho;
-      nuevoCanvas.height = nuevoAlto;
-      const ctx = nuevoCanvas.getContext("2d");
-    
-      // Dibujar logo arriba
-      ctx.drawImage(logo, 0, 0, logoAncho, logoAlto);
-    
-      // Dibujar canvas original debajo
-      ctx.drawImage(canvas, 0, logoAlto);
-    
-      return nuevoCanvas;
-    }
-  
     async function takePhoto() {
       setStatus('Procesando imagen...');
       takePhotoBtn.disabled = true;
       if (stream && video.readyState >= 2) {
         imageToGrayscaleAndResize(video);
         const encoder = new window.ReceiptPrinterEncoder();
-
-        const combinado = combinarCanvasYLogo(canvas, logoLudineta);
-        const ctxCombinado = combinado.getContext('2d');
-        const imageData = ctxCombinado.getImageData(0, 0, combinado.width, combinado.height);
-
-        console.log(combinado.width, combinado.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
         const data = encoder
           .initialize()
-          .image(imageData, combinado.width, combinado.height, "atkinson")
+          .image(imageData, canvas.width, canvas.height, "atkinson")
           .newline()
           .newline()
           .encode();

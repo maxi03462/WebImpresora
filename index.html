@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>La Ludineta</title>
 <style>
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 1rem; max-width: 520px; margin: auto; }
   video, canvas, img { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
@@ -18,8 +17,6 @@
 </style>
 </head>
 <body>
-  <h1>Camara Polaroid</h1>
-
   <div id="cameraArea">
     <video id="video" playsinline autoplay style="display:none;"></video>
     <div class="controls">
@@ -46,7 +43,6 @@
     </div>
   </div>
   <div id="log" class="log" role="log" aria-live="polite"></div>
-  <img id="logo" src="Ludineta.png" width="384" height="128" style="visibility:hidden;">
 
 <script src="./impresora.js"></script>
 <script src="./camara.js"></script>
