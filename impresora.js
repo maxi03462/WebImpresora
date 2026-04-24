@@ -24,6 +24,12 @@ function initImpresora() {
         // Others vendor services can be discovered dynamically
     ];
 
+    function emitPrinterState(state, message = '') {
+        window.dispatchEvent(new CustomEvent('printer-state', {
+            detail: { state, message }
+        }));
+    }
+
     function log(msg, cls = '') {
         const p = document.createElement('div');
         p.textContent = msg;
@@ -39,11 +45,13 @@ function initImpresora() {
     async function connect() {
         if (!supportsWebBluetooth()) {
             log('Este navegador no soporta Web Bluetooth. Usa Chrome/Edge en Android/desktop y habilita Bluetooth.', 'err');
+            emitPrinterState('error', 'Sin soporte Bluetooth');
             return;
         }
 
         try {
             log('Mostrando selector de dispositivos…');
+            emitPrinterState('pairing', 'Buscando impresora');
             const filters = [];
 
             device = await navigator.bluetooth.requestDevice({
@@ -58,6 +66,7 @@ function initImpresora() {
             device.addEventListener('gattserverdisconnected', () => {
                 log('Desconectado', 'warn');
                 btnDisconnect.disabled = true;
+                emitPrinterState('disconnected', 'Impresora desconectada');
             });
 
             server = await device.gatt.connect();
@@ -94,8 +103,10 @@ function initImpresora() {
 
             log('Canal de escritura listo ✅', 'ok');
             btnDisconnect.disabled = false;
+            emitPrinterState('connected', 'Impresora conectada');
         } catch (err) {
             log('Error: ' + err.message, 'err');
+            emitPrinterState('error', err.message);
             console.error(err);
         }
     }
@@ -105,9 +116,11 @@ function initImpresora() {
             if (device && device.gatt.connected) {
                 device.gatt.disconnect();
                 log('Desconectado manualmente');
+                emitPrinterState('disconnected', 'Desconectado manualmente');
             }
         } catch (e) {
             log('Error al desconectar: ' + e.message, 'err');
+            emitPrinterState('error', e.message);
         }
     }
 
@@ -115,6 +128,7 @@ function initImpresora() {
     btnDisconnect.addEventListener('click', disconnect);
 
     log("Bluetooth iniciado");
+    emitPrinterState('idle', 'Bluetooth iniciado');
 }
 
 async function writeEscPos(data) {

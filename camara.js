@@ -6,21 +6,43 @@ const stopCamBtn = document.getElementById('stopCam');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const status = document.getElementById('status');
+const flashFx = document.getElementById('flashFx');
+const arcadeState = document.getElementById('arcadeState');
 
 function initCameraUploader() {
   
     let stream = null;
   
-    function setStatus(s) { status.textContent = s; }
+    function setArcadeState(label, tone) {
+      if (!arcadeState) return;
+      arcadeState.textContent = label;
+      arcadeState.dataset.tone = tone;
+    }
+
+    function setStatus(s) {
+      status.textContent = s;
+      window.dispatchEvent(new CustomEvent('camera-status', { detail: s }));
+
+      const lower = String(s).toLowerCase();
+      if (lower.includes('procesando') || lower.includes('imprimiendo') || lower.includes('printing')) {
+        setArcadeState('PRINTING...', 'busy');
+      } else if (lower.includes('no se pudo') || lower.includes('no disponible')) {
+        setArcadeState('ERROR', 'error');
+      } else if (lower.includes('cámara abierta')) {
+        setArcadeState('READY', 'ready');
+      } else if (lower.includes('detenida')) {
+        setArcadeState('SLEEP', 'idle');
+      }
+    }
   
     async function startCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
         video.srcObject = stream;
         video.style.display = 'block';
-        startCamBtn.disabled = true;
+        if (startCamBtn) startCamBtn.disabled = true;
         takePhotoBtn.disabled = false;
-        stopCamBtn.disabled = false;
+        if (stopCamBtn) stopCamBtn.disabled = false;
         setStatus('Cámara abierta. Presiona "Tomar foto".');
       } catch (err) {
         console.error('No se pudo abrir la cámara:', err);
@@ -36,9 +58,9 @@ function initCameraUploader() {
       }
       video.srcObject = null;
       video.style.display = 'none';
-      startCamBtn.disabled = false;
+      if (startCamBtn) startCamBtn.disabled = false;
       takePhotoBtn.disabled = true;
-      stopCamBtn.disabled = true;
+      if (stopCamBtn) stopCamBtn.disabled = true;
       setStatus('Cámara detenida.');
     }
   
@@ -84,10 +106,16 @@ function initCameraUploader() {
       setStatus('Procesando imagen...');
       takePhotoBtn.disabled = true;
       if (stream && video.readyState >= 2) {
+        if (flashFx) {
+          flashFx.classList.add('active');
+          setTimeout(() => flashFx.classList.remove('active'), 180);
+        }
+
         imageToGrayscaleAndResize(video);
         const encoder = new window.ReceiptPrinterEncoder();
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
+        setArcadeState('PRINTING...', 'busy');
         const data = encoder
           .initialize()
           .image(imageData, canvas.width, canvas.height, "atkinson")
@@ -95,6 +123,8 @@ function initCameraUploader() {
           .newline()
           .encode();
         await writeEscPos(data);
+        setStatus('Impresión finalizada.');
+        setArcadeState('READY', 'ready');
       } else {
         setStatus('Cámara no disponible. Por favor sube una foto.');
       }
@@ -102,9 +132,12 @@ function initCameraUploader() {
       takePhotoBtn.disabled = false;
     }
   
-    startCamBtn.addEventListener('click', startCamera);
-    stopCamBtn.addEventListener('click', stopCamera);
+    if (startCamBtn) startCamBtn.addEventListener('click', startCamera);
+    if (stopCamBtn) stopCamBtn.addEventListener('click', stopCamera);
     takePhotoBtn.addEventListener('click', takePhoto);
     window.addEventListener('pagehide', stopCamera);
+
+    // Iniciar automaticamente la camara para flujo rapido en mobile.
+    startCamera();
 }
   

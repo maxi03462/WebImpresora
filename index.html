@@ -3,47 +3,70 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<style>
-  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 1rem; max-width: 520px; margin: auto; }
-  video, canvas, img { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
-  .controls { margin-top: 0.75rem; display:flex; gap:.5rem; flex-wrap:wrap; }
-  button { padding: .6rem .9rem; border-radius: 8px; border: none; background:#0b76ff; color:white; font-weight:600; cursor:pointer; }
-  button.secondary { background:#6b7280; }
-  button.expandir { display: block; width: 100%; box-sizing: border-box;}
-  #status { margin-top:.75rem; color:#333; }
-  #previewWrap { margin-top:.75rem; display:flex; gap:.6rem; align-items:center; }
-  #previewLabel { font-size:.9rem; color:#444; }
-  input[type=file] { display:none; }
-</style>
+<title>Polaroid Arcade</title>
+<link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div id="cameraArea">
-    <video id="video" playsinline autoplay style="display:none;"></video>
-    <div class="controls">
-      <button id="takePhoto" class="expandir" disabled>Tomar foto</button>
-    </div>
-    <div class="controls">
-      <button id="startCam" class="secondary">Abrir cámara</button>
-      <button id="stopCam" class="secondary" disabled>Detener cámara</button>
-    </div>
-  </div>
-  <div class="row" style="margin:1rem 0;">
-    <button id="btnConnect" class="primary">🔗 Conectar impresora</button>
-    <button id="btnDisconnect" class="secondary" disabled>⏏️ Desconectar</button>
-  </div>
+  <main class="app" aria-label="Cabina Polaroid">
+    <header class="topbar">
+      <div class="brand">Polaroid Arcade</div>
+      <div id="arcadeState" class="statusPill" data-tone="idle">BOOTING</div>
+    </header>
 
-  <div id="previewWrap">
-    <div>
-      <div id="previewLabel">Preview:</div>
-      <canvas id="canvas" width="384" height="256" style="display:block; margin-top:.5rem;"></canvas>
-    </div>
-    <div>
-      <div id="uploadLabel">Estado:</div>
-      <div id="status">Listo.</div>
-    </div>
-  </div>
-  <div id="log" class="log" role="log" aria-live="polite"></div>
+    <section id="cameraArea" class="cameraShell">
+      <video id="video" playsinline autoplay></video>
+      <div class="frameOverlay" aria-hidden="true"></div>
+      <div id="flashFx" aria-hidden="true"></div>
+    </section>
 
+    <section class="controls">
+      <button id="takePhoto" disabled>Tomar Foto</button>
+      <div class="row">
+        <button id="btnConnect" class="primary">Conectar Impresora</button>
+        <button id="btnDisconnect" class="secondary" disabled>Desconectar</button>
+      </div>
+
+      <button id="startCam" class="hiddenControl" aria-hidden="true" tabindex="-1">Abrir cámara</button>
+      <button id="stopCam" class="hiddenControl" aria-hidden="true" tabindex="-1">Detener cámara</button>
+    </section>
+
+    <section class="statusCard" aria-live="polite">
+      <div>Estado del sistema</div>
+      <div id="status">Inicializando cámara...</div>
+    </section>
+
+    <canvas id="canvas" width="384" height="256"></canvas>
+    <div id="log" class="log" role="log" aria-live="polite"></div>
+  </main>
+
+  <script>
+    const arcadeStateEl = document.getElementById('arcadeState');
+    const btnDisconnectEl = document.getElementById('btnDisconnect');
+
+    function setArcadeState(label, tone) {
+      if (!arcadeStateEl) return;
+      arcadeStateEl.textContent = label;
+      arcadeStateEl.dataset.tone = tone;
+    }
+
+    window.addEventListener('printer-state', (ev) => {
+      const st = ev.detail && ev.detail.state ? ev.detail.state : 'idle';
+      if (st === 'connected') setArcadeState('READY', 'ready');
+      else if (st === 'pairing') setArcadeState('PAIRING...', 'pairing');
+      else if (st === 'error') setArcadeState('ERROR', 'error');
+      else if (st === 'disconnected') setArcadeState('NO PRINTER', 'idle');
+      else if (!btnDisconnectEl.disabled) setArcadeState('READY', 'ready');
+    });
+
+    window.addEventListener('camera-status', (ev) => {
+      const txt = String(ev.detail || '').toLowerCase();
+      if (txt.includes('procesando') || txt.includes('imprimiendo')) {
+        document.body.classList.add('printingPulse');
+      } else {
+        document.body.classList.remove('printingPulse');
+      }
+    });
+  </script>
 <script src="./impresora.js"></script>
 <script src="./camara.js"></script>
 <script src="./dist/receipt-printer-encoder.umd.js"></script>
