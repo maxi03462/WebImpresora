@@ -8,10 +8,13 @@ const ctx = canvas.getContext('2d');
 const status = document.getElementById('status');
 const flashFx = document.getElementById('flashFx');
 const arcadeState = document.getElementById('arcadeState');
+const printTarget = document.getElementById('printTarget');
 
 function initCameraUploader() {
   
     let stream = null;
+    let currentFacingMode = 'environment'; // 'environment' (trasera) o 'user' (frontal)
+    const toggleCameraBtn = document.getElementById('toggleCamera');
   
     function setArcadeState(label, tone) {
       if (!arcadeState) return;
@@ -35,18 +38,76 @@ function initCameraUploader() {
       }
     }
   
-    async function startCamera() {
+    async function startCamera(facingModeOrEvent = 'environment') {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+        // Soportar ambos: llamadas directas y eventos de click
+        let facingMode = 'environment';
+        if (typeof facingModeOrEvent === 'string') {
+          facingMode = facingModeOrEvent;
+        } else if (facingModeOrEvent && facingModeOrEvent.preventDefault) {
+          // Es un evento, usar el facing mode actual
+          facingMode = currentFacingMode;
+        }
+        
+        currentFacingMode = facingMode;
+        
+        const constraints = {
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: { ideal: facingMode }
+          },
+          audio: false
+        };
+        
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         video.style.display = 'block';
         if (startCamBtn) startCamBtn.disabled = true;
         takePhotoBtn.disabled = false;
         if (stopCamBtn) stopCamBtn.disabled = false;
-        setStatus('Cámara abierta. Presiona "Tomar foto".');
+        if (toggleCameraBtn) toggleCameraBtn.disabled = false;
+        const cameraLabel = facingMode === 'user' ? 'frontal' : 'trasera';
+        setStatus(`Cámara ${cameraLabel} abierta. Presiona "Tomar foto".`);
       } catch (err) {
         console.error('No se pudo abrir la cámara:', err);
-        setStatus('No se pudo abrir la cámara. Usa "Subir foto" como fallback.');
+        const modeStr = typeof facingModeOrEvent === 'string' ? facingModeOrEvent : 'trasera';
+        const cameraLabel = modeStr === 'user' ? 'frontal' : 'trasera';
+        setStatus(`No se pudo abrir cámara ${cameraLabel}. Usa "Subir foto" como fallback.`);
+        throw err;
+      }
+    }
+
+    async function toggleCamera() {
+      if (!stream) return;
+      
+      toggleCameraBtn.disabled = true;
+      const prevFacingMode = currentFacingMode;
+      const newFacingMode = prevFacingMode === 'environment' ? 'user' : 'environment';
+      const cameraLabel = newFacingMode === 'user' ? 'frontal' : 'trasera';
+      
+      setStatus(`Cambiando a cámara ${cameraLabel}...`);
+      
+      // Detener la cámara actual
+      const tracks = stream.getTracks();
+      tracks.forEach(t => t.stop());
+      stream = null;
+      video.srcObject = null;
+      
+      // Iniciar la nueva cámara con mejor manejo de errores
+      try {
+        await startCamera(newFacingMode);
+      } catch (err) {
+        console.error(`No se pudo cambiar a cámara ${cameraLabel}:`, err);
+        setStatus(`No se pudo acceder a cámara ${cameraLabel}. Dispositivo no disponible.`);
+        toggleCameraBtn.disabled = false;
+        // Intentar volver a la cámara anterior
+        try {
+          await startCamera(prevFacingMode);
+        } catch (backErr) {
+          console.error('Error restaurando cámara anterior:', backErr);
+          setStatus('Error de cámara. Por favor recarga la página.');
+        }
       }
     }
   
@@ -81,6 +142,32 @@ function initCameraUploader() {
       }
       if (!sw || !sh) {
         tctx.drawImage(imgOrVideo, 0, 0, targetW, targetH);
+      } else if (imgOrVideo instanceof HTMLVideoElement && printTarget) {
+        const videoRect = imgOrVideo.getBoundingClientRect();
+        const targetRect = printTarget.getBoundingClientRect();
+
+        // Mapeo exacto de la zona objetivo (overlay) a pixeles reales del frame del video.
+        const coverScale = Math.max(videoRect.width / sw, videoRect.height / sh);
+        const displayedW = sw * coverScale;
+        const displayedH = sh * coverScale;
+        const offsetX = (videoRect.width - displayedW) / 2;
+        const offsetY = (videoRect.height - displayedH) / 2;
+
+        const targetXInVideo = targetRect.left - videoRect.left;
+        const targetYInVideo = targetRect.top - videoRect.top;
+
+        let sx = (targetXInVideo - offsetX) / coverScale;
+        let sy = (targetYInVideo - offsetY) / coverScale;
+        let sWidth = targetRect.width / coverScale;
+        let sHeight = targetRect.height / coverScale;
+
+        // Clamp para evitar salirse del frame fuente.
+        sx = Math.max(0, Math.min(sw - 1, sx));
+        sy = Math.max(0, Math.min(sh - 1, sy));
+        sWidth = Math.max(1, Math.min(sw - sx, sWidth));
+        sHeight = Math.max(1, Math.min(sh - sy, sHeight));
+
+        tctx.drawImage(imgOrVideo, sx, sy, sWidth, sHeight, 0, 0, targetW, targetH);
       } else {
         const scale = Math.max(targetW / sw, targetH / sh);
         const drawW = sw * scale;
@@ -134,10 +221,14 @@ function initCameraUploader() {
   
     if (startCamBtn) startCamBtn.addEventListener('click', startCamera);
     if (stopCamBtn) stopCamBtn.addEventListener('click', stopCamera);
+    if (toggleCameraBtn) toggleCameraBtn.addEventListener('click', toggleCamera);
     takePhotoBtn.addEventListener('click', takePhoto);
     window.addEventListener('pagehide', stopCamera);
 
     // Iniciar automaticamente la camara para flujo rapido en mobile.
-    startCamera();
+    startCamera().catch(err => {
+      console.error('Error al iniciar cámara:', err);
+      if (toggleCameraBtn) toggleCameraBtn.disabled = true;
+    });
 }
   

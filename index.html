@@ -16,11 +16,15 @@
     <section id="cameraArea" class="cameraShell">
       <video id="video" playsinline autoplay></video>
       <div class="frameOverlay" aria-hidden="true"></div>
+      <div id="printTarget" class="printTarget" aria-hidden="true">
+        <span>Zona de impresion</span>
+      </div>
       <div id="flashFx" aria-hidden="true"></div>
     </section>
 
     <section class="controls">
       <button id="takePhoto" disabled>Tomar Foto</button>
+      <button id="toggleCamera" class="camera-toggle">📷 Cambiar Cámara</button>
       <div class="row">
         <button id="btnConnect" class="primary">Conectar Impresora</button>
         <button id="btnDisconnect" class="secondary" disabled>Desconectar</button>

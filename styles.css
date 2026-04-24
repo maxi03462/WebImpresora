@@ -85,8 +85,9 @@ body {
   margin: 12px;
   border-radius: 18px;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.14);
+  border: 2px solid rgba(255,255,255,0.08);
   background: #05070f;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 0 30px rgba(19, 214, 191, 0.15);
 }
 
 #video {
@@ -95,37 +96,88 @@ body {
   object-fit: cover;
   display: block;
   filter: saturate(0.95) contrast(1.03);
+  background: #000;
 }
 
 .frameOverlay {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border: 10px solid rgba(4, 8, 22, 0.36);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+  border: 6px solid rgba(19, 214, 191, 0.35);
+  box-shadow: inset 0 0 0 2px rgba(19, 214, 191, 0.6), inset 0 0 15px rgba(19, 214, 191, 0.08);
 }
 
 .frameOverlay::before,
 .frameOverlay::after {
   content: "";
   position: absolute;
-  width: 22px;
-  height: 22px;
-  border: 2px solid rgba(255,255,255,0.5);
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(19, 214, 191, 0.7);
 }
 
 .frameOverlay::before {
-  left: 14px;
-  top: 14px;
+  left: 12px;
+  top: 12px;
+  border-right: 0;
+  border-bottom: 0;
+  box-shadow: -2px -2px 8px rgba(19, 214, 191, 0.3);
+}
+
+.frameOverlay::after {
+  right: 12px;
+  bottom: 12px;
+  border-left: 0;
+  border-top: 0;
+  box-shadow: 2px 2px 8px rgba(19, 214, 191, 0.3);
+}
+
+.printTarget {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 92%;
+  aspect-ratio: 3 / 2;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border: 2px dashed rgba(255, 95, 69, 0.95);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.printTarget::before,
+.printTarget::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 95, 69, 0.95);
+}
+
+.printTarget::before {
+  left: -2px;
+  top: -2px;
   border-right: 0;
   border-bottom: 0;
 }
 
-.frameOverlay::after {
-  right: 14px;
-  bottom: 14px;
+.printTarget::after {
+  right: -2px;
+  bottom: -2px;
   border-left: 0;
   border-top: 0;
+}
+
+.printTarget span {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 3px 6px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(255, 95, 69, 0.88);
+  border-radius: 6px;
 }
 
 #flashFx {
@@ -176,6 +228,17 @@ button:disabled { opacity: 0.42; filter: grayscale(0.2); }
   font-size: 1.1rem;
   background: linear-gradient(180deg, #ff845b, #ff5f45);
   box-shadow: 0 10px 26px rgba(255,95,69,0.38);
+}
+
+#toggleCamera {
+  color: #fff;
+  font-size: 0.95rem;
+  background: linear-gradient(180deg, rgba(19, 214, 191, 0.9), rgba(19, 214, 191, 0.7));
+  box-shadow: 0 8px 20px rgba(19, 214, 191, 0.3);
+}
+
+#toggleCamera:hover:not(:disabled) {
+  filter: brightness(1.1);
 }
 
 #btnConnect {
